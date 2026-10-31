@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Check,
@@ -12,8 +12,13 @@ import {
   UserCheck,
   X,
 } from "lucide-react"
-import { people, personById, projects } from "@/lib/data"
-import { formatClock } from "@/lib/voice-agents"
+import { projects, type IssueType, type Priority } from "@/lib/data"
+import { issueTemplates, issueTypeLabel } from "@/lib/issue-templates"
+import {
+  formatClock,
+  type AgentProposal,
+  type ProposalKind,
+} from "@/lib/voice-agents"
 import { useWorkspace } from "@/components/workspace-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +26,8 @@ import { cn } from "@/lib/utils"
 
 export function MeetingsView() {
   const {
+    people,
+    personById,
     meetings,
     activeMeetingId,
     startMeeting,
@@ -30,6 +37,7 @@ export function MeetingsView() {
     loadDemoTranscript,
     runMeetingAgents,
     proposals,
+    updateProposal,
     reviewProposal,
     isVoiceVerified,
     select,
@@ -329,85 +337,21 @@ export function MeetingsView() {
                   </p>
                 )}
                 <ul className="space-y-3">
-                  {proposed.map((p, i) => {
-                    const assignee = personById(p.assigneeId)
-                    const speaker = personById(p.speakerId)
-                    return (
-                      <motion.li
-                        key={p.id}
-                        layout
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98 }}
-                        transition={{ delay: i * 0.03 }}
-                        className="rounded-2xl border border-border/70 bg-background/70 p-3.5"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-[var(--aksh-mist)] px-2 py-0.5 text-[11px] font-semibold capitalize text-[var(--aksh-teal-ink)]">
-                            {p.kind}
-                          </span>
-                          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-semibold uppercase">
-                            {p.issueType}
-                          </span>
-                          <span className="text-[11px] capitalize text-muted-foreground">
-                            {p.priority} · {p.scoreSignal}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm font-medium">{p.title}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Speaker {speaker?.name ?? "?"} → assignee{" "}
-                          <button
-                            type="button"
-                            className="font-semibold text-foreground underline-offset-2 hover:underline"
-                            onClick={() =>
-                              select({ kind: "person", id: p.assigneeId })
-                            }
-                          >
-                            {assignee?.name ?? "?"}
-                          </button>
-                          {!isVoiceVerified(p.speakerId) && (
-                            <span className="ml-1 text-[var(--aksh-coral)]">
-                              (speaker voice not verified — prefer assignee
-                              confirm)
-                            </span>
-                          )}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="rounded-full bg-[var(--aksh-teal)] text-white hover:bg-[var(--aksh-teal)]/90"
-                            onClick={() => reviewProposal(p.id, "confirmed")}
-                          >
-                            <Check className="size-3.5" />
-                            Leader confirm
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full"
-                            onClick={() =>
-                              reviewProposal(p.id, "assignee_confirmed")
-                            }
-                          >
-                            <UserCheck className="size-3.5" />
-                            Assignee confirm
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="rounded-full"
-                            onClick={() => reviewProposal(p.id, "rejected")}
-                          >
-                            <X className="size-3.5" />
-                            Reject
-                          </Button>
-                        </div>
-                      </motion.li>
-                    )
-                  })}
+                  {proposed.map((p, i) => (
+                    <ProposalEditor
+                      key={p.id}
+                      proposal={p}
+                      index={i}
+                      people={people}
+                      personById={personById}
+                      isVoiceVerified={isVoiceVerified}
+                      onPatch={updateProposal}
+                      onReview={reviewProposal}
+                      onSelectPerson={(id) =>
+                        select({ kind: "person", id })
+                      }
+                    />
+                  ))}
                 </ul>
               </AnimatePresence>
 
@@ -442,5 +386,177 @@ export function MeetingsView() {
         </p>
       </div>
     </div>
+  )
+}
+
+const KIND_OPTIONS: ProposalKind[] = ["commitment", "idea", "update", "ask"]
+
+function ProposalEditor({
+  proposal: p,
+  index,
+  people,
+  personById,
+  isVoiceVerified,
+  onPatch,
+  onReview,
+  onSelectPerson,
+}: {
+  proposal: AgentProposal
+  index: number
+  people: { id: string; name: string }[]
+  personById: (id: string) => { name: string } | undefined
+  isVoiceVerified: (id: string) => boolean
+  onPatch: (
+    id: string,
+    patch: Partial<{
+      title: string
+      assigneeId: string
+      issueType: IssueType
+      priority: Priority
+      kind: ProposalKind
+    }>
+  ) => void
+  onReview: (
+    id: string,
+    decision: "confirmed" | "rejected" | "assignee_confirmed"
+  ) => void
+  onSelectPerson: (id: string) => void
+}) {
+  const [title, setTitle] = useState(p.title)
+  const speaker = personById(p.speakerId)
+
+  useEffect(() => {
+    setTitle(p.title)
+  }, [p.id, p.title])
+
+  return (
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{ delay: index * 0.03 }}
+      className="rounded-2xl border border-border/70 bg-background/70 p-3.5"
+    >
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={p.kind}
+          onChange={(e) =>
+            onPatch(p.id, { kind: e.target.value as ProposalKind })
+          }
+          className="h-7 rounded-full border border-border/70 bg-[var(--aksh-mist)] px-2 text-[11px] font-semibold capitalize text-[var(--aksh-teal-ink)] outline-none"
+          aria-label="Proposal kind"
+        >
+          {KIND_OPTIONS.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <select
+          value={p.issueType}
+          onChange={(e) =>
+            onPatch(p.id, { issueType: e.target.value as IssueType })
+          }
+          className="h-7 rounded-full border border-border/70 bg-card px-2 text-[11px] font-semibold uppercase outline-none"
+          aria-label="Issue type"
+        >
+          {issueTemplates.map((t) => (
+            <option key={t.type} value={t.type}>
+              {issueTypeLabel(t.type)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={p.priority}
+          onChange={(e) =>
+            onPatch(p.id, { priority: e.target.value as Priority })
+          }
+          className="h-7 rounded-full border border-border/70 bg-card px-2 text-[11px] font-semibold capitalize outline-none"
+          aria-label="Priority"
+        >
+          {(["low", "medium", "high"] as Priority[]).map((pr) => (
+            <option key={pr} value={pr}>
+              {pr}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <Input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={() => {
+          const next = title.trim()
+          if (next && next !== p.title) onPatch(p.id, { title: next })
+          else setTitle(p.title)
+        }}
+        className="mt-2 h-9 rounded-xl text-sm font-medium"
+        aria-label="Proposal title"
+      />
+
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span>Speaker {speaker?.name ?? "?"}</span>
+        <span>→</span>
+        <label className="inline-flex items-center gap-1.5">
+          <span>assignee</span>
+          <select
+            value={p.assigneeId}
+            onChange={(e) => onPatch(p.id, { assigneeId: e.target.value })}
+            className="h-7 rounded-lg border border-border/70 bg-card px-2 text-xs font-semibold text-foreground outline-none"
+          >
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="font-semibold text-foreground underline-offset-2 hover:underline"
+          onClick={() => onSelectPerson(p.assigneeId)}
+        >
+          Open profile
+        </button>
+        {!isVoiceVerified(p.speakerId) && (
+          <span className="text-[var(--aksh-coral)]">
+            (speaker voice not verified — prefer assignee confirm)
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          className="rounded-full bg-[var(--aksh-teal)] text-white hover:bg-[var(--aksh-teal)]/90"
+          onClick={() => onReview(p.id, "confirmed")}
+        >
+          <Check className="size-3.5" />
+          Leader confirm
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="rounded-full"
+          onClick={() => onReview(p.id, "assignee_confirmed")}
+        >
+          <UserCheck className="size-3.5" />
+          Assignee confirm
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="rounded-full"
+          onClick={() => onReview(p.id, "rejected")}
+        >
+          <X className="size-3.5" />
+          Reject
+        </Button>
+      </div>
+    </motion.li>
   )
 }

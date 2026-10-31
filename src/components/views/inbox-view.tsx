@@ -1,25 +1,30 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { inboxThreads } from "@/lib/data"
 import { Button } from "@/components/ui/button"
+import { useWorkspace } from "@/components/workspace-context"
 import { cn } from "@/lib/utils"
 
 export function InboxView() {
+  const { inboxThreads, updateInboxThread } = useWorkspace()
   const [selectedId, setSelectedId] = useState(inboxThreads[0]?.id)
-  const [read, setRead] = useState<Record<string, boolean>>({})
   const [showSummary, setShowSummary] = useState(true)
   const [sent, setSent] = useState<Record<string, boolean>>({})
+  const [draft, setDraft] = useState("")
 
   const selected =
     inboxThreads.find((t) => t.id === selectedId) ?? inboxThreads[0]
+
+  useEffect(() => {
+    setDraft(selected?.draft ?? "")
+  }, [selected?.id, selected?.draft])
 
   return (
     <div className="grid min-h-[420px] overflow-hidden rounded-3xl border border-border/70 bg-card/80 backdrop-blur-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <ul className="divide-y divide-border/50 border-b border-border/50 lg:border-r lg:border-b-0">
         {inboxThreads.map((thread, i) => {
-          const isUnread = thread.unread && !read[thread.id]
+          const isUnread = thread.unread
           const active = thread.id === selected?.id
           return (
             <motion.li
@@ -32,7 +37,9 @@ export function InboxView() {
                 type="button"
                 onClick={() => {
                   setSelectedId(thread.id)
-                  setRead((prev) => ({ ...prev, [thread.id]: true }))
+                  if (thread.unread) {
+                    updateInboxThread(thread.id, { unread: false })
+                  }
                 }}
                 className={cn(
                   "flex w-full flex-col gap-1 px-4 py-3.5 text-left transition-colors",
@@ -121,9 +128,17 @@ export function InboxView() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Draft reply
               </p>
-              <p className="text-sm leading-relaxed text-foreground/90">
-                {selected.draft}
-              </p>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => {
+                  if (draft !== selected.draft) {
+                    updateInboxThread(selected.id, { draft })
+                  }
+                }}
+                rows={4}
+                className="w-full resize-y rounded-xl border border-border bg-card px-3 py-2.5 text-sm leading-relaxed outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
             </div>
 
             <div className="mt-auto flex flex-wrap gap-2 pt-2">
@@ -131,7 +146,10 @@ export function InboxView() {
                 type="button"
                 className="rounded-full bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)] hover:bg-[var(--aksh-coral)]/90"
                 onClick={() => {
-                  setRead((prev) => ({ ...prev, [selected.id]: true }))
+                  updateInboxThread(selected.id, {
+                    unread: false,
+                    draft,
+                  })
                   setSent((prev) => ({ ...prev, [selected.id]: true }))
                 }}
               >
@@ -142,7 +160,7 @@ export function InboxView() {
                 variant="outline"
                 className="rounded-full"
                 onClick={() =>
-                  setRead((prev) => ({ ...prev, [selected.id]: true }))
+                  updateInboxThread(selected.id, { unread: false })
                 }
               >
                 Mark read

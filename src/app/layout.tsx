@@ -18,9 +18,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "aksh — playful project & task management",
+  title: "aksh — voice-gated work for product teams",
   description:
-    "A light productivity workspace with Board, Timeline, Team, and Inbox views. Inspired by Kanbo-style sprint UIs.",
+    "Leader-verified voice, meeting agents, personal dashboards, and a sealed contribution scorecard — Work, People, Voice, and Insights.",
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

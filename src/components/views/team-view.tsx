@@ -1,7 +1,6 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { people } from "@/lib/data"
 import { useWorkspace } from "@/components/workspace-context"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +16,7 @@ const burndown = [
 
 export function TeamView() {
   const {
+    people,
     select,
     selection,
     personDashboard,

@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { personById, timelineItems } from "@/lib/data"
 import { Button } from "@/components/ui/button"
 import { useWorkspace } from "@/components/workspace-context"
 import { cn } from "@/lib/utils"
@@ -10,7 +9,7 @@ import { cn } from "@/lib/utils"
 const TOTAL_DAYS = 18
 
 export function TimelineView() {
-  const { select, selection } = useWorkspace()
+  const { select, selection, timelineItems, personById } = useWorkspace()
   const [showDeps, setShowDeps] = useState(true)
   const [tilt, setTilt] = useState(false)
 

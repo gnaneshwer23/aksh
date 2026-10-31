@@ -37,6 +37,8 @@ export type Task = {
   type: IssueType
   /** Markdown / structured text body (template-filled on create). */
   description: string
+  /** Soft-archive — hidden from board when true. */
+  archived?: boolean
 }
 
 export type TimelineItem = {
@@ -63,14 +65,15 @@ export type InboxThread = {
   draft: string
 }
 
+/** Flat catalog of dashboard leaves (order used by area groups in `lib/views`). */
 export const views: { id: ViewId; label: string }[] = [
   { id: "board", label: "Board" },
   { id: "timeline", label: "Timeline" },
+  { id: "inbox", label: "Inbox" },
   { id: "team", label: "Team" },
   { id: "voices", label: "Voices" },
   { id: "meetings", label: "Meetings" },
   { id: "scorecard", label: "Scorecard" },
-  { id: "inbox", label: "Inbox" },
 ]
 
 export const columns: { id: ColumnId; label: string }[] = [

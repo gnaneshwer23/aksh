@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { people, personById } from "@/lib/data"
 import { DEFAULT_SCORE_WEIGHTS } from "@/lib/voice-agents"
 import { useWorkspace } from "@/components/workspace-context"
 import { Button } from "@/components/ui/button"
@@ -11,6 +10,8 @@ import { cn } from "@/lib/utils"
 
 export function ScorecardView() {
   const {
+    people,
+    personById,
     proposals,
     skills,
     scoreWeights,

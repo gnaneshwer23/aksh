@@ -7,6 +7,8 @@ import { AnimatePresence, motion } from "framer-motion"
 import { Bell, Menu, Plus, Search, X } from "lucide-react"
 import { Brand } from "@/components/brand"
 import { CopilotOrb } from "@/components/copilot-orb"
+import { DashboardNav } from "@/components/dashboard-nav"
+import { PageHeader } from "@/components/page-header"
 import { ViewTabs } from "@/components/view-tabs"
 import { BoardView } from "@/components/views/board-view"
 import { TimelineView } from "@/components/views/timeline-view"
@@ -18,20 +20,23 @@ import { ScorecardView } from "@/components/views/scorecard-view"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useWorkspace } from "@/components/workspace-context"
+import { copilotSteps, projects, type ViewId } from "@/lib/data"
 import {
-  copilotSteps,
-  inboxThreads,
-  projects,
-  views,
-  type ViewId,
-} from "@/lib/data"
-import { viewFromPathname } from "@/lib/views"
+  areaForView,
+  pathForView,
+  viewFromPathname,
+  viewMeta,
+} from "@/lib/views"
 import { cn } from "@/lib/utils"
 
 export function AppShell() {
   const pathname = usePathname()
   const router = useRouter()
   const view = viewFromPathname(pathname)
+  const area = areaForView(view)
+  const meta = viewMeta[view]
+  const isWorkArea = area.id === "work"
+
   const {
     tasks,
     project,
@@ -42,6 +47,7 @@ export function AppShell() {
     promoteHighPriorityTodos,
     select,
     pendingReviewCount,
+    inboxThreads,
   } = useWorkspace()
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -51,7 +57,7 @@ export function AppShell() {
 
   const unread = useMemo(
     () => inboxThreads.filter((t) => t.unread).length,
-    []
+    [inboxThreads]
   )
 
   useEffect(() => {
@@ -59,7 +65,7 @@ export function AppShell() {
   }, [pathname])
 
   function goToView(id: ViewId) {
-    router.push(`/${id}`)
+    router.push(pathForView(id))
   }
 
   function runCopilot() {
@@ -95,11 +101,11 @@ export function AppShell() {
             <Menu className="size-5" />
           </Button>
 
-          <Link href="/board" className="min-w-0">
+          <Link href={pathForView("board")} className="min-w-0">
             <Brand size="lg" className="sm:gap-3" />
           </Link>
           <span className="hidden truncate text-sm font-medium text-muted-foreground md:inline">
-            playful work for small teams
+            voice → agents → scorecard
           </span>
 
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
@@ -191,62 +197,42 @@ export function AppShell() {
       </header>
 
       <div className="mx-auto flex w-full max-w-[1280px] flex-1 gap-0 px-0 sm:px-6 lg:gap-6 lg:py-6">
-        <aside className="hidden w-56 shrink-0 flex-col gap-6 lg:flex">
-          <nav className="flex flex-col gap-1 rounded-3xl border border-border/60 bg-card/70 p-2 backdrop-blur-sm">
-            {views.map((item) => (
-              <Link
-                key={item.id}
-                href={`/${item.id}`}
-                className={cn(
-                  "rounded-2xl px-3 py-2.5 text-left text-sm font-medium transition-colors",
-                  view === item.id
-                    ? "bg-[var(--aksh-mist)] text-foreground"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                )}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  {item.label}
-                  {item.id === "inbox" && unread > 0 && (
-                    <span className="rounded-full bg-[var(--aksh-coral)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--aksh-coral-ink)]">
-                      {unread}
-                    </span>
-                  )}
-                  {(item.id === "meetings" || item.id === "voices") &&
-                    pendingReviewCount > 0 && (
-                      <span className="rounded-full bg-[var(--aksh-teal)] px-1.5 py-0.5 text-[10px] font-bold text-white">
-                        {pendingReviewCount}
-                      </span>
-                    )}
-                </span>
-              </Link>
-            ))}
-          </nav>
-
-          <div className="rounded-3xl border border-border/60 bg-card/70 p-3 backdrop-blur-sm">
-            <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Project
-            </p>
-            <div className="flex flex-col gap-1">
-              {["All", ...projects].map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    setProject(p)
-                    if (view !== "board") goToView("board")
-                  }}
-                  className={cn(
-                    "rounded-xl px-2.5 py-2 text-left text-sm transition-colors",
-                    project === p
-                      ? "bg-[var(--aksh-mist)] font-semibold text-foreground"
-                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+        <aside className="hidden w-60 shrink-0 flex-col gap-6 lg:flex">
+          <div className="rounded-3xl border border-border/60 bg-card/70 p-2.5 backdrop-blur-sm">
+            <DashboardNav
+              activeView={view}
+              unread={unread}
+              pendingReviewCount={pendingReviewCount}
+            />
           </div>
+
+          {isWorkArea && (
+            <div className="rounded-3xl border border-border/60 bg-card/70 p-3 backdrop-blur-sm">
+              <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Project
+              </p>
+              <div className="flex flex-col gap-1">
+                {["All", ...projects].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      setProject(p)
+                      if (view !== "board") goToView("board")
+                    }}
+                    className={cn(
+                      "rounded-xl px-2.5 py-2 text-left text-sm transition-colors",
+                      project === p
+                        ? "bg-[var(--aksh-mist)] font-semibold text-foreground"
+                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                    )}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-auto rounded-3xl border border-[var(--aksh-coral)]/20 bg-gradient-to-br from-card to-[var(--aksh-mist)] p-4">
             <div className="mb-3 flex items-center gap-3">
@@ -275,44 +261,32 @@ export function AppShell() {
         </aside>
 
         <main className="min-w-0 flex-1 px-4 py-4 sm:px-0 sm:py-0">
-          <div className="mb-5 space-y-4 sm:mb-6">
-            <div className="max-w-xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--aksh-teal-ink)]">
-                Workspace
-              </p>
-              <h1 className="mt-1 font-heading text-3xl font-bold tracking-[-0.04em] text-foreground sm:text-4xl">
-                <span className="text-[var(--aksh-coral)]">aksh</span>
-                <span className="text-foreground/80"> · </span>
-                {views.find((n) => n.id === view)?.label}
-              </h1>
-              <p className="mt-2 max-w-[48ch] text-sm leading-6 text-[var(--aksh-ink-soft)] sm:text-[15px]">
-                Voice-gated capture → agents propose commitments → personal
-                dashboards and a sealed scorecard for the product team.
-              </p>
-            </div>
+          <PageHeader area={area} view={meta}>
             <ViewTabs />
-          </div>
+          </PageHeader>
 
-          <div className="mb-4 flex gap-2 overflow-x-auto lg:hidden">
-            {["All", ...projects].map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => {
-                  setProject(p)
-                  if (view !== "board") goToView("board")
-                }}
-                className={cn(
-                  "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                  project === p
-                    ? "bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)]"
-                    : "bg-card/80 text-muted-foreground ring-1 ring-border/70"
-                )}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
+          {isWorkArea && (
+            <div className="mb-4 flex gap-2 overflow-x-auto lg:hidden">
+              {["All", ...projects].map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    setProject(p)
+                    if (view !== "board") goToView("board")
+                  }}
+                  className={cn(
+                    "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    project === p
+                      ? "bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)]"
+                      : "bg-card/80 text-muted-foreground ring-1 ring-border/70"
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
 
           <AnimatePresence mode="wait">
             <motion.div
@@ -360,7 +334,7 @@ export function AppShell() {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
-              className="absolute inset-y-0 left-0 flex w-[280px] flex-col gap-4 border-r border-border bg-background p-4 shadow-xl"
+              className="absolute inset-y-0 left-0 flex w-[300px] flex-col gap-4 overflow-y-auto border-r border-border bg-background p-4 shadow-xl"
             >
               <div className="flex items-center justify-between">
                 <Brand size="md" />
@@ -374,23 +348,12 @@ export function AppShell() {
                   <X className="size-5" />
                 </Button>
               </div>
-              <nav className="flex flex-col gap-1">
-                {views.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/${item.id}`}
-                    onClick={() => setMobileNavOpen(false)}
-                    className={cn(
-                      "rounded-2xl px-3 py-2.5 text-left text-sm font-medium",
-                      view === item.id
-                        ? "bg-[var(--aksh-mist)]"
-                        : "text-muted-foreground"
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
+              <DashboardNav
+                activeView={view}
+                unread={unread}
+                pendingReviewCount={pendingReviewCount}
+                onNavigate={() => setMobileNavOpen(false)}
+              />
               <Button
                 type="button"
                 variant="outline"

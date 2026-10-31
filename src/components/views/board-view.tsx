@@ -1,12 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import {
-  columns,
-  personById,
-  type ColumnId,
-  type Task,
-} from "@/lib/data"
+import { columns, type ColumnId, type Task } from "@/lib/data"
 import { issueTypeLabel, issueTypeTone } from "@/lib/issue-templates"
 import { Badge } from "@/components/ui/badge"
 import { useWorkspace } from "@/components/workspace-context"
@@ -29,9 +24,10 @@ export function BoardView({
   query?: string
   onMove?: (taskId: string, column: ColumnId) => void
 }) {
-  const { select, selection } = useWorkspace()
+  const { select, selection, personById } = useWorkspace()
   const q = query.trim().toLowerCase()
   const visible = tasks.filter((t) => {
+    if (t.archived) return false
     const projectOk = project === "All" || t.project === project
     if (!projectOk) return false
     if (!q) return true

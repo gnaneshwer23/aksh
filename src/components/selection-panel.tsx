@@ -1,20 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { X } from "lucide-react"
+import { Archive, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   useWorkspace,
   type AddTaskInput,
+  type TaskPatch,
 } from "@/components/workspace-context"
 import {
   columns,
-  people,
-  personById,
   projects,
-  timelineItems,
   type ColumnId,
   type IssueType,
   type Priority,
@@ -29,8 +27,15 @@ import {
 import { cn } from "@/lib/utils"
 
 export function SelectionPanel() {
-  const { selection, clearSelection, tasks, addTask, updateTaskColumn, updateTask } =
-    useWorkspace()
+  const {
+    selection,
+    clearSelection,
+    tasks,
+    addTask,
+    updateTaskColumn,
+    updateTask,
+    archiveTask,
+  } = useWorkspace()
 
   return (
     <AnimatePresence>
@@ -75,9 +80,10 @@ export function SelectionPanel() {
                 onMove={(column) => {
                   updateTaskColumn(selection.id, column)
                 }}
-                onDescriptionChange={(description) => {
-                  updateTask(selection.id, { description })
+                onPatch={(patch) => {
+                  updateTask(selection.id, patch)
                 }}
+                onArchive={() => archiveTask(selection.id)}
               />
             )}
             {selection.kind === "person" && (
@@ -101,7 +107,7 @@ export function SelectionPanel() {
 }
 
 function PanelTitle() {
-  const { selection, tasks } = useWorkspace()
+  const { selection, tasks, personById, timelineItems } = useWorkspace()
   if (!selection) return null
   if (selection.kind === "new-task") {
     return (
@@ -167,60 +173,218 @@ function IssueTypeBadge({ type }: { type: IssueType }) {
   )
 }
 
+function FieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </span>
+  )
+}
+
+function selectClassName() {
+  return "h-10 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+}
+
 function TaskDetail({
   task,
   onMove,
-  onDescriptionChange,
+  onPatch,
+  onArchive,
 }: {
   task?: Task
   onMove: (column: ColumnId) => void
-  onDescriptionChange: (description: string) => void
+  onPatch: (patch: TaskPatch) => void
+  onArchive: () => void
 }) {
-  const [draft, setDraft] = useState(task?.description ?? "")
+  const { people } = useWorkspace()
+  const [title, setTitle] = useState(task?.title ?? "")
+  const [description, setDescription] = useState(task?.description ?? "")
+  const [tagsText, setTagsText] = useState(task?.tags.join(", ") ?? "")
+  const [descTouched, setDescTouched] = useState(false)
 
   useEffect(() => {
-    setDraft(task?.description ?? "")
-  }, [task?.id, task?.description])
+    setTitle(task?.title ?? "")
+    setDescription(task?.description ?? "")
+    setTagsText(task?.tags.join(", ") ?? "")
+    setDescTouched(false)
+  }, [task?.id, task?.title, task?.description, task?.tags])
 
   if (!task) {
     return <p className="text-sm text-muted-foreground">Task not found.</p>
   }
-  const person = personById(task.assigneeId)
+  const current = task
+
+  function applyType(next: IssueType) {
+    const tmpl = templateByType(next)
+    const prevTmpl = templateByType(current.type)
+    const patch: TaskPatch = { type: next }
+    if (!descTouched || description.trim() === prevTmpl.description.trim()) {
+      patch.description = tmpl.description
+      setDescription(tmpl.description)
+      setDescTouched(false)
+    }
+    if (tmpl.defaults?.priority) patch.priority = tmpl.defaults.priority
+    if (tmpl.defaults?.points != null) patch.points = tmpl.defaults.points
+    if (tmpl.defaults?.tags) {
+      patch.tags = tmpl.defaults.tags
+      setTagsText(tmpl.defaults.tags.join(", "))
+    }
+    onPatch(patch)
+  }
+
+  function commitTags() {
+    const tags = tagsText
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+    const same =
+      tags.length === current.tags.length &&
+      tags.every((t, i) => t === current.tags[i])
+    if (!same) onPatch({ tags })
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
-      <div className="flex flex-wrap items-center gap-2">
-        <IssueTypeBadge type={task.type} />
-      </div>
-      <dl className="grid gap-3 text-sm">
-        <Row label="Project" value={task.project} />
-        <Row label="Priority" value={task.priority} />
-        <Row label="Points" value={`${task.points}`} />
-        <Row label="Assignee" value={person?.name ?? "—"} />
-        <Row
-          label="Status"
-          value={columns.find((c) => c.id === task.column)?.label ?? task.column}
-        />
-        <Row label="Tags" value={task.tags.join(", ") || "—"} />
-      </dl>
+      <fieldset className="grid gap-2">
+        <legend className="sr-only">Issue type</legend>
+        <FieldLabel>Type</FieldLabel>
+        <div className="grid grid-cols-3 gap-2">
+          {issueTemplates.map((tmpl) => (
+            <button
+              key={tmpl.type}
+              type="button"
+              onClick={() => applyType(tmpl.type)}
+              className={cn(
+                "rounded-2xl border px-2 py-2.5 text-center transition-colors",
+                task.type === tmpl.type
+                  ? cn("border-transparent shadow-sm", tmpl.toneClass)
+                  : "border-border/70 bg-card text-muted-foreground hover:bg-[var(--aksh-mist)] hover:text-foreground"
+              )}
+            >
+              <span className="block text-xs font-semibold">
+                {tmpl.shortLabel}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {templateByType(task.type).hint}
+        </p>
+      </fieldset>
+
       <label className="grid gap-1.5 text-sm">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Description
-        </span>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+        <FieldLabel>Summary</FieldLabel>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           onBlur={() => {
-            if (draft !== task.description) onDescriptionChange(draft)
+            const next = title.trim()
+            if (next && next !== task.title) onPatch({ title: next })
+            else setTitle(task.title)
+          }}
+          className="h-10 rounded-xl"
+        />
+      </label>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1.5 text-sm">
+          <FieldLabel>Project</FieldLabel>
+          <select
+            value={task.project}
+            onChange={(e) => onPatch({ project: e.target.value })}
+            className={selectClassName()}
+          >
+            {projects.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <FieldLabel>Points</FieldLabel>
+          <Input
+            type="number"
+            min={0}
+            max={21}
+            value={task.points}
+            onChange={(e) => {
+              const n = Number(e.target.value)
+              if (!Number.isNaN(n)) onPatch({ points: Math.max(0, n) })
+            }}
+            className="h-10 rounded-xl"
+          />
+        </label>
+      </div>
+
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Priority</FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          {(["low", "medium", "high"] as Priority[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPatch({ priority: p })}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition-colors",
+                task.priority === p
+                  ? "bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)]"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </label>
+
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Assignee</FieldLabel>
+        <select
+          value={task.assigneeId}
+          onChange={(e) => onPatch({ assigneeId: e.target.value })}
+          className={selectClassName()}
+        >
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Labels</FieldLabel>
+        <Input
+          value={tagsText}
+          onChange={(e) => setTagsText(e.target.value)}
+          onBlur={commitTags}
+          placeholder="design, frontend"
+          className="h-10 rounded-xl"
+        />
+      </label>
+
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Description</FieldLabel>
+        <textarea
+          value={description}
+          onChange={(e) => {
+            setDescription(e.target.value)
+            setDescTouched(true)
+          }}
+          onBlur={() => {
+            if (description !== task.description) {
+              onPatch({ description })
+            }
           }}
           rows={12}
           spellCheck={false}
           className="min-h-[200px] resize-y rounded-2xl border border-border bg-card px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         />
       </label>
-      <div className="mt-auto space-y-2 border-t border-border/60 pt-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Move to
-        </p>
+
+      <div className="space-y-2 border-t border-border/60 pt-4">
+        <FieldLabel>Status</FieldLabel>
         <div className="flex flex-wrap gap-2">
           {columns.map((col) => (
             <Button
@@ -236,6 +400,18 @@ function TaskDetail({
           ))}
         </div>
       </div>
+
+      <div className="mt-auto border-t border-border/60 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full rounded-full border-[var(--aksh-coral)]/40 text-[var(--aksh-coral-ink)] hover:bg-[var(--aksh-coral)]/10"
+          onClick={onArchive}
+        >
+          <Archive className="size-3.5" />
+          Archive work item
+        </Button>
+      </div>
     </div>
   )
 }
@@ -247,13 +423,31 @@ function PersonDetail({ personId }: { personId: string }) {
     personDashboard,
     voiceEnrollments,
     reviewProposal,
+    personById,
+    updatePerson,
+    people,
+    addPerson,
   } = useWorkspace()
   const person = personById(personId)
+  const [name, setName] = useState(person?.name ?? "")
+  const [role, setRole] = useState(person?.role ?? "")
+  const [capacity, setCapacity] = useState(person?.capacity ?? 30)
+  const [allocated, setAllocated] = useState(person?.allocated ?? 0)
+
+  useEffect(() => {
+    setName(person?.name ?? "")
+    setRole(person?.role ?? "")
+    setCapacity(person?.capacity ?? 30)
+    setAllocated(person?.allocated ?? 0)
+  }, [person?.id, person?.name, person?.role, person?.capacity, person?.allocated])
+
   if (!person) {
     return <p className="text-sm text-muted-foreground">Person not found.</p>
   }
-  const assigned = tasks.filter((t) => t.assigneeId === person.id)
-  const pct = Math.round((person.allocated / person.capacity) * 100)
+  const assigned = tasks.filter(
+    (t) => t.assigneeId === person.id && !t.archived
+  )
+  const pct = Math.round((person.allocated / Math.max(person.capacity, 1)) * 100)
   const dash = personDashboard(person.id)
   const voice =
     voiceEnrollments.find((v) => v.personId === person.id)?.status ??
@@ -268,15 +462,73 @@ function PersonDetail({ personId }: { personId: string }) {
         >
           {person.initials}
         </span>
-        <div>
-          <p className="text-sm text-muted-foreground">{person.role}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs capitalize text-muted-foreground">
+            Voice {voice} · score {dash.score.total}
+          </p>
           <p className="text-sm tabular-nums text-foreground">
             {person.allocated}h / {person.capacity}h · {pct}%
           </p>
-          <p className="mt-0.5 text-xs capitalize text-muted-foreground">
-            Voice {voice} · score {dash.score.total}
-          </p>
         </div>
+      </div>
+
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Name</FieldLabel>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => {
+            const next = name.trim()
+            if (next && next !== person.name) updatePerson(person.id, { name: next })
+            else setName(person.name)
+          }}
+          className="h-10 rounded-xl"
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Role</FieldLabel>
+        <Input
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          onBlur={() => {
+            const next = role.trim()
+            if (next && next !== person.role) updatePerson(person.id, { role: next })
+            else setRole(person.role)
+          }}
+          className="h-10 rounded-xl"
+        />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1.5 text-sm">
+          <FieldLabel>Capacity (h)</FieldLabel>
+          <Input
+            type="number"
+            min={1}
+            value={capacity}
+            onChange={(e) => setCapacity(Number(e.target.value))}
+            onBlur={() => {
+              if (capacity !== person.capacity) {
+                updatePerson(person.id, { capacity })
+              }
+            }}
+            className="h-10 rounded-xl"
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <FieldLabel>Allocated (h)</FieldLabel>
+          <Input
+            type="number"
+            min={0}
+            value={allocated}
+            onChange={(e) => setAllocated(Number(e.target.value))}
+            onBlur={() => {
+              if (allocated !== person.allocated) {
+                updatePerson(person.id, { allocated })
+              }
+            }}
+            className="h-10 rounded-xl"
+          />
+        </label>
       </div>
 
       <DashboardSlice
@@ -300,10 +552,8 @@ function PersonDetail({ personId }: { personId: string }) {
 
       {dash.skills.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Skill tags
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+          <FieldLabel>Skill tags</FieldLabel>
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {dash.skills.map((s) => (
               <span
                 key={s.id}
@@ -324,10 +574,8 @@ function PersonDetail({ personId }: { personId: string }) {
       )}
 
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Assigned tasks
-        </p>
-        <ul className="space-y-2">
+        <FieldLabel>Assigned tasks</FieldLabel>
+        <ul className="mt-2 space-y-2">
           {assigned.map((task) => (
             <li key={task.id}>
               <button
@@ -349,6 +597,23 @@ function PersonDetail({ personId }: { personId: string }) {
             <li className="text-sm text-muted-foreground">No open tasks.</li>
           )}
         </ul>
+      </div>
+
+      <div className="mt-auto border-t border-border/60 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full rounded-full"
+          onClick={() =>
+            addPerson({
+              name: `Teammate ${people.length + 1}`,
+              role: "Teammate",
+              capacity: 30,
+            })
+          }
+        >
+          Add teammate
+        </Button>
       </div>
     </div>
   )
@@ -375,10 +640,8 @@ function DashboardSlice({
 }) {
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {title}
-      </p>
-      <ul className="space-y-2">
+      <FieldLabel>{title}</FieldLabel>
+      <ul className="mt-2 space-y-2">
         {items.length === 0 && (
           <li className="text-sm text-muted-foreground">{empty}</li>
         )}
@@ -422,8 +685,19 @@ function DashboardSlice({
 }
 
 function TimelineDetail({ itemId }: { itemId: string }) {
-  const { select } = useWorkspace()
+  const { select, timelineItems, people, personById, updateTimelineItem } =
+    useWorkspace()
   const item = timelineItems.find((t) => t.id === itemId)
+  const [title, setTitle] = useState(item?.title ?? "")
+  const [start, setStart] = useState(item?.start ?? 0)
+  const [end, setEnd] = useState(item?.end ?? 1)
+
+  useEffect(() => {
+    setTitle(item?.title ?? "")
+    setStart(item?.start ?? 0)
+    setEnd(item?.end ?? 1)
+  }, [item?.id, item?.title, item?.start, item?.end])
+
   if (!item) {
     return <p className="text-sm text-muted-foreground">Track not found.</p>
   }
@@ -431,17 +705,81 @@ function TimelineDetail({ itemId }: { itemId: string }) {
   const dep = item.dependsOn
     ? timelineItems.find((t) => t.id === item.dependsOn)
     : undefined
+
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
       <div
         className="h-2 rounded-full"
         style={{ backgroundColor: item.color }}
       />
-      <dl className="grid gap-3 text-sm">
-        <Row label="Owner" value={owner?.name ?? "—"} />
-        <Row label="Window" value={`Day ${item.start + 1} → Day ${item.end}`} />
-        <Row label="Depends on" value={dep?.title ?? "None"} />
-      </dl>
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Title</FieldLabel>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            const next = title.trim()
+            if (next && next !== item.title) {
+              updateTimelineItem(item.id, { title: next })
+            } else setTitle(item.title)
+          }}
+          className="h-10 rounded-xl"
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm">
+        <FieldLabel>Owner</FieldLabel>
+        <select
+          value={item.ownerId}
+          onChange={(e) =>
+            updateTimelineItem(item.id, { ownerId: e.target.value })
+          }
+          className={selectClassName()}
+        >
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1.5 text-sm">
+          <FieldLabel>Start day (0–17)</FieldLabel>
+          <Input
+            type="number"
+            min={0}
+            max={17}
+            value={start}
+            onChange={(e) => setStart(Number(e.target.value))}
+            onBlur={() => {
+              if (start !== item.start) {
+                updateTimelineItem(item.id, { start })
+              }
+            }}
+            className="h-10 rounded-xl"
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <FieldLabel>End day (1–18)</FieldLabel>
+          <Input
+            type="number"
+            min={1}
+            max={18}
+            value={end}
+            onChange={(e) => setEnd(Number(e.target.value))}
+            onBlur={() => {
+              if (end !== item.end) {
+                updateTimelineItem(item.id, { end })
+              }
+            }}
+            className="h-10 rounded-xl"
+          />
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Window: Day {item.start + 1} → Day {item.end}
+        {dep ? ` · depends on ${dep.title}` : ""}
+      </p>
       {owner && (
         <Button
           type="button"
@@ -467,6 +805,7 @@ function TimelineDetail({ itemId }: { itemId: string }) {
 }
 
 function NewTaskForm({ onCreate }: { onCreate: (input: AddTaskInput) => void }) {
+  const { people } = useWorkspace()
   const defaultType: IssueType = "task"
   const [issueType, setIssueType] = useState<IssueType>(defaultType)
   const [title, setTitle] = useState("")
@@ -478,7 +817,6 @@ function NewTaskForm({ onCreate }: { onCreate: (input: AddTaskInput) => void }) 
     () => templateByType(defaultType).defaults?.priority ?? "medium"
   )
   const [assigneeId, setAssigneeId] = useState(people[0]?.id ?? "p1")
-  /** Track whether the user edited description after the last type switch. */
   const [descTouched, setDescTouched] = useState(false)
 
   function applyType(next: IssueType) {
@@ -559,7 +897,7 @@ function NewTaskForm({ onCreate }: { onCreate: (input: AddTaskInput) => void }) 
         <select
           value={project}
           onChange={(e) => setProject(e.target.value)}
-          className="h-10 rounded-xl border border-border bg-card px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className={selectClassName()}
         >
           {projects.map((p) => (
             <option key={p} value={p}>
@@ -593,7 +931,7 @@ function NewTaskForm({ onCreate }: { onCreate: (input: AddTaskInput) => void }) 
         <select
           value={assigneeId}
           onChange={(e) => setAssigneeId(e.target.value)}
-          className="h-10 rounded-xl border border-border bg-card px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className={selectClassName()}
         >
           {people.map((p) => (
             <option key={p.id} value={p.id}>
@@ -610,14 +948,5 @@ function NewTaskForm({ onCreate }: { onCreate: (input: AddTaskInput) => void }) 
         Add to board
       </Button>
     </form>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-border/40 pb-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-medium capitalize">{value}</dd>
-    </div>
   )
 }

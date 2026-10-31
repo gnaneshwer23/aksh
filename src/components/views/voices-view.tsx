@@ -2,7 +2,6 @@
 
 import { motion } from "framer-motion"
 import { Check, Mic, ShieldAlert, X } from "lucide-react"
-import { people, personById } from "@/lib/data"
 import { ENROLLMENT_PHRASE } from "@/lib/voice-agents"
 import { useWorkspace } from "@/components/workspace-context"
 import { Button } from "@/components/ui/button"
@@ -20,6 +19,8 @@ const statusTone: Record<string, string> = {
 
 export function VoicesView() {
   const {
+    people,
+    personById,
     voiceEnrollments,
     enrollVoice,
     setVoiceStatus,

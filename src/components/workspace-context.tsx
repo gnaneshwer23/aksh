@@ -10,12 +10,17 @@ import {
 } from "react"
 import {
   columns,
+  inboxThreads as seedInbox,
   initialTasks,
-  people,
+  people as seedPeople,
+  timelineItems as seedTimeline,
   type ColumnId,
+  type InboxThread,
   type IssueType,
+  type Person,
   type Priority,
   type Task,
+  type TimelineItem,
 } from "@/lib/data"
 import { templateByType } from "@/lib/issue-templates"
 import {
@@ -29,6 +34,7 @@ import {
   proposalToTaskDescription,
   type AgentProposal,
   type Meeting,
+  type ProposalKind,
   type ProposalStatus,
   type ScoreWeights,
   type SkillProposal,
@@ -50,10 +56,51 @@ export type AddTaskInput = {
   assigneeId: string
   type: IssueType
   description: string
+  points?: number
+  tags?: string[]
 }
+
+export type TaskPatch = Partial<
+  Pick<
+    Task,
+    | "description"
+    | "column"
+    | "title"
+    | "priority"
+    | "assigneeId"
+    | "type"
+    | "project"
+    | "points"
+    | "tags"
+    | "archived"
+  >
+>
+
+export type ProposalPatch = Partial<
+  Pick<
+    AgentProposal,
+    "title" | "detail" | "assigneeId" | "issueType" | "priority" | "kind"
+  >
+>
+
+export type PersonPatch = Partial<
+  Pick<Person, "name" | "role" | "capacity" | "allocated" | "color">
+>
+
+export type TimelinePatch = Partial<
+  Pick<TimelineItem, "title" | "ownerId" | "start" | "end" | "color" | "dependsOn">
+>
+
+export type InboxPatch = Partial<
+  Pick<InboxThread, "draft" | "subject" | "unread">
+>
 
 type WorkspaceContextValue = {
   tasks: Task[]
+  people: Person[]
+  timelineItems: TimelineItem[]
+  inboxThreads: InboxThread[]
+  personById: (id: string) => Person | undefined
   project: string
   setProject: (project: string) => void
   query: string
@@ -64,16 +111,9 @@ type WorkspaceContextValue = {
   moveTask: (taskId: string, column: ColumnId) => void
   promoteHighPriorityTodos: () => void
   addTask: (input: AddTaskInput) => string
-  updateTask: (
-    taskId: string,
-    patch: Partial<
-      Pick<
-        Task,
-        "description" | "column" | "title" | "priority" | "assigneeId" | "type"
-      >
-    >
-  ) => void
+  updateTask: (taskId: string, patch: TaskPatch) => void
   updateTaskColumn: (taskId: string, column: ColumnId) => void
+  archiveTask: (taskId: string) => void
   /** Voice enrollment gate (leader verifies). */
   voiceEnrollments: VoiceEnrollment[]
   enrollVoice: (personId: string, audioLabel?: string) => void
@@ -96,6 +136,7 @@ type WorkspaceContextValue = {
   skills: SkillProposal[]
   scoreWeights: ScoreWeights
   setScoreWeights: (weights: ScoreWeights) => void
+  updateProposal: (proposalId: string, patch: ProposalPatch) => void
   reviewProposal: (
     proposalId: string,
     decision: Extract<
@@ -109,6 +150,14 @@ type WorkspaceContextValue = {
     decision: "accepted" | "dismissed" | "corrected",
     correctedTag?: string
   ) => void
+  updatePerson: (personId: string, patch: PersonPatch) => void
+  addPerson: (input: {
+    name: string
+    role: string
+    capacity?: number
+  }) => string
+  updateTimelineItem: (itemId: string, patch: TimelinePatch) => void
+  updateInboxThread: (threadId: string, patch: InboxPatch) => void
   personDashboard: (personId: string) => {
     commitments: AgentProposal[]
     updates: AgentProposal[]
@@ -126,13 +175,37 @@ function uid(prefix: string) {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 }
 
+function initialsFromName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase()
+}
+
+const PERSON_COLORS = [
+  "#FF6B1A",
+  "#0D9488",
+  "#2563EB",
+  "#DB2777",
+  "#CA8A04",
+  "#7C3AED",
+  "#0891B2",
+  "#EA580C",
+  "#4F46E5",
+  "#059669",
+]
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
+  const [people, setPeople] = useState<Person[]>(seedPeople)
+  const [timelineItems, setTimelineItems] =
+    useState<TimelineItem[]>(seedTimeline)
+  const [inboxThreads, setInboxThreads] = useState<InboxThread[]>(seedInbox)
   const [project, setProject] = useState("All")
   const [query, setQuery] = useState("")
   const [selection, setSelection] = useState<Selection>(null)
   const [voiceEnrollments, setVoiceEnrollments] = useState<VoiceEnrollment[]>(
-    () => initialVoiceEnrollments(people)
+    () => initialVoiceEnrollments(seedPeople)
   )
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null)
@@ -140,6 +213,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [skills, setSkills] = useState<SkillProposal[]>([])
   const [scoreWeights, setScoreWeights] =
     useState<ScoreWeights>(DEFAULT_SCORE_WEIGHTS)
+
+  const personById = useCallback(
+    (id: string) => people.find((p) => p.id === id),
+    [people]
+  )
 
   const select = useCallback((next: Selection) => setSelection(next), [])
   const clearSelection = useCallback(() => setSelection(null), [])
@@ -153,7 +231,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const promoteHighPriorityTodos = useCallback(() => {
     setTasks((prev) =>
       prev.map((t) =>
-        t.priority === "high" && t.column === "todo"
+        t.priority === "high" && t.column === "todo" && !t.archived
           ? { ...t, column: "doing" }
           : t
       )
@@ -162,18 +240,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const updateTaskColumn = moveTask
 
-  const updateTask = useCallback(
-    (
-      taskId: string,
-      patch: Partial<
-        Pick<
-          Task,
-          "description" | "column" | "title" | "priority" | "assigneeId" | "type"
-        >
-      >
-    ) => {
+  const updateTask = useCallback((taskId: string, patch: TaskPatch) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
+    )
+  }, [])
+
+  const archiveTask = useCallback(
+    (taskId: string) => {
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
+        prev.map((t) => (t.id === taskId ? { ...t, archived: true } : t))
+      )
+      setSelection((cur) =>
+        cur?.kind === "task" && cur.id === taskId ? null : cur
       )
     },
     []
@@ -188,9 +267,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       column: columns[0].id,
       project: input.project,
       priority: input.priority,
-      points: tmpl.defaults?.points ?? 2,
+      points: input.points ?? tmpl.defaults?.points ?? 2,
       assigneeId: input.assigneeId,
-      tags: tmpl.defaults?.tags ?? ["new"],
+      tags: input.tags ?? tmpl.defaults?.tags ?? ["new"],
       type: input.type,
       description: input.description,
     }
@@ -198,6 +277,83 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setSelection({ kind: "task", id })
     return id
   }, [])
+
+  const updatePerson = useCallback((personId: string, patch: PersonPatch) => {
+    setPeople((prev) =>
+      prev.map((p) => {
+        if (p.id !== personId) return p
+        const next = { ...p, ...patch }
+        if (patch.name !== undefined) {
+          next.initials = initialsFromName(patch.name)
+        }
+        if (patch.capacity !== undefined) {
+          next.capacity = Math.max(1, Math.round(patch.capacity))
+        }
+        if (patch.allocated !== undefined) {
+          next.allocated = Math.max(0, Math.round(patch.allocated))
+        }
+        return next
+      })
+    )
+  }, [])
+
+  const addPerson = useCallback(
+    (input: { name: string; role: string; capacity?: number }) => {
+      const id = uid("p")
+      const name = input.name.trim() || "New teammate"
+      const person: Person = {
+        id,
+        name,
+        role: input.role.trim() || "Teammate",
+        initials: initialsFromName(name),
+        color: PERSON_COLORS[people.length % PERSON_COLORS.length],
+        capacity: input.capacity ?? 30,
+        allocated: 0,
+      }
+      setPeople((prev) => [...prev, person])
+      setVoiceEnrollments((prev) => [
+        ...prev,
+        {
+          personId: id,
+          status: "unenrolled",
+          samplePhrase:
+            "Aksh verifies my voice for the product team. I commit to clear action items and honest updates in every meeting.",
+        },
+      ])
+      setSelection({ kind: "person", id })
+      return id
+    },
+    [people.length]
+  )
+
+  const updateTimelineItem = useCallback(
+    (itemId: string, patch: TimelinePatch) => {
+      setTimelineItems((prev) =>
+        prev.map((item) => {
+          if (item.id !== itemId) return item
+          const next = { ...item, ...patch }
+          if (patch.start !== undefined) {
+            next.start = Math.max(0, Math.min(17, Math.round(patch.start)))
+          }
+          if (patch.end !== undefined) {
+            next.end = Math.max(1, Math.min(18, Math.round(patch.end)))
+          }
+          if (next.end <= next.start) next.end = next.start + 1
+          return next
+        })
+      )
+    },
+    []
+  )
+
+  const updateInboxThread = useCallback(
+    (threadId: string, patch: InboxPatch) => {
+      setInboxThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, ...patch } : t))
+      )
+    },
+    []
+  )
 
   const isVoiceVerified = useCallback(
     (personId: string) =>
@@ -281,7 +437,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         )
       )
     },
-    []
+    [people]
   )
 
   const attachMeetingAudio = useCallback(
@@ -293,62 +449,68 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     []
   )
 
-  const loadDemoTranscript = useCallback((meetingId: string) => {
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === meetingId
-          ? {
-              ...m,
-              transcriptRaw: DEMO_MEETING_TRANSCRIPT,
-              lines: diarizeTranscript(DEMO_MEETING_TRANSCRIPT, people),
-              audioLabel: m.audioLabel ?? "nova-standup-demo.wav",
-            }
-          : m
+  const loadDemoTranscript = useCallback(
+    (meetingId: string) => {
+      setMeetings((prev) =>
+        prev.map((m) =>
+          m.id === meetingId
+            ? {
+                ...m,
+                transcriptRaw: DEMO_MEETING_TRANSCRIPT,
+                lines: diarizeTranscript(DEMO_MEETING_TRANSCRIPT, people),
+                audioLabel: m.audioLabel ?? "nova-standup-demo.wav",
+              }
+            : m
+        )
       )
-    )
-  }, [])
+    },
+    [people]
+  )
 
-  const runMeetingAgents = useCallback((meetingId: string) => {
-    setMeetings((prev) => {
-      const meeting = prev.find((m) => m.id === meetingId)
-      if (!meeting) return prev
-      const lines =
-        meeting.lines.length > 0
-          ? meeting.lines
-          : diarizeTranscript(meeting.transcriptRaw, people)
-      const extracted = extractProposalsFromLines(meetingId, lines, people)
-      const now = new Date().toISOString()
+  const runMeetingAgents = useCallback(
+    (meetingId: string) => {
+      setMeetings((prev) => {
+        const meeting = prev.find((m) => m.id === meetingId)
+        if (!meeting) return prev
+        const lines =
+          meeting.lines.length > 0
+            ? meeting.lines
+            : diarizeTranscript(meeting.transcriptRaw, people)
+        const extracted = extractProposalsFromLines(meetingId, lines, people)
+        const now = new Date().toISOString()
 
-      queueMicrotask(() => {
-        setProposals((pPrev) => {
-          const without = pPrev.filter((p) => p.meetingId !== meetingId)
-          const next: AgentProposal[] = extracted.proposals.map((p) => ({
-            ...p,
-            id: uid("pr"),
-            meetingId,
-            status: "proposed",
-            createdAt: now,
-          }))
-          return [...next, ...without]
+        queueMicrotask(() => {
+          setProposals((pPrev) => {
+            const without = pPrev.filter((p) => p.meetingId !== meetingId)
+            const next: AgentProposal[] = extracted.proposals.map((p) => ({
+              ...p,
+              id: uid("pr"),
+              meetingId,
+              status: "proposed" as const,
+              createdAt: now,
+            }))
+            return [...next, ...without]
+          })
+          setSkills((sPrev) => {
+            const without = sPrev.filter((s) => s.meetingId !== meetingId)
+            const next: SkillProposal[] = extracted.skills.map((s) => ({
+              ...s,
+              id: uid("sk"),
+              status: "proposed" as const,
+            }))
+            return [...next, ...without]
+          })
         })
-        setSkills((sPrev) => {
-          const without = sPrev.filter((s) => s.meetingId !== meetingId)
-          const next: SkillProposal[] = extracted.skills.map((s) => ({
-            ...s,
-            id: uid("sk"),
-            status: "proposed",
-          }))
-          return [...next, ...without]
-        })
+
+        return prev.map((m) =>
+          m.id === meetingId
+            ? { ...m, status: "ready", lines, endedAt: m.endedAt ?? now }
+            : m
+        )
       })
-
-      return prev.map((m) =>
-        m.id === meetingId
-          ? { ...m, status: "ready", lines, endedAt: m.endedAt ?? now }
-          : m
-      )
-    })
-  }, [])
+    },
+    [people]
+  )
 
   const finishMeeting = useCallback(
     (meetingId: string) => {
@@ -368,10 +530,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         )
       )
       setActiveMeetingId((cur) => (cur === meetingId ? null : cur))
-      // Simulate short agent processing, then extract
       window.setTimeout(() => runMeetingAgents(meetingId), 600)
     },
-    [runMeetingAgents]
+    [people, runMeetingAgents]
+  )
+
+  const updateProposal = useCallback(
+    (proposalId: string, patch: ProposalPatch) => {
+      setProposals((prev) =>
+        prev.map((p) => {
+          if (p.id !== proposalId || p.status !== "proposed") return p
+          const next = { ...p, ...patch }
+          if (patch.issueType && patch.issueType !== p.issueType) {
+            const tmpl = templateByType(patch.issueType)
+            if (tmpl.defaults?.priority && !patch.priority) {
+              next.priority = tmpl.defaults.priority
+            }
+          }
+          return next
+        })
+      )
+    },
+    []
   )
 
   const reviewProposal = useCallback(
@@ -386,8 +566,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const target = prev.find((p) => p.id === proposalId)
         if (!target) return prev
 
-        // Hard rule: permanent task / score only with verified voice↔person
-        // (leader may seal) OR assignee confirmation alone.
         const speakerOk = isVoiceVerified(target.speakerId)
         const assigneeSelf = decision === "assignee_confirmed"
         const leaderSeal = decision === "confirmed" && speakerOk
@@ -396,7 +574,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           !speakerOk &&
           target.kind === "commitment"
         ) {
-          // Leader cannot seal commitments until voice is attested.
           return prev
         }
         const canSeal =
@@ -537,6 +714,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       tasks,
+      people,
+      timelineItems,
+      inboxThreads,
+      personById,
       project,
       setProject,
       query,
@@ -549,6 +730,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       addTask,
       updateTask,
       updateTaskColumn,
+      archiveTask,
       voiceEnrollments,
       enrollVoice,
       setVoiceStatus,
@@ -565,15 +747,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       skills,
       scoreWeights,
       setScoreWeights,
+      updateProposal,
       reviewProposal,
       markProposalCompleted,
       reviewSkill,
+      updatePerson,
+      addPerson,
+      updateTimelineItem,
+      updateInboxThread,
       personDashboard,
       pendingReviewCount,
       leaderPersonId: LEADER_PERSON_ID,
     }),
     [
       tasks,
+      people,
+      timelineItems,
+      inboxThreads,
+      personById,
       project,
       query,
       selection,
@@ -584,6 +775,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       addTask,
       updateTask,
       updateTaskColumn,
+      archiveTask,
       voiceEnrollments,
       enrollVoice,
       setVoiceStatus,
@@ -599,9 +791,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       proposals,
       skills,
       scoreWeights,
+      updateProposal,
       reviewProposal,
       markProposalCompleted,
       reviewSkill,
+      updatePerson,
+      addPerson,
+      updateTimelineItem,
+      updateInboxThread,
       personDashboard,
       pendingReviewCount,
     ]
@@ -621,3 +818,6 @@ export function useWorkspace() {
   }
   return ctx
 }
+
+/** Re-export for proposal kind edits in UI. */
+export type { ProposalKind }
