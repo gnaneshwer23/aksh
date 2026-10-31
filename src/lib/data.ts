@@ -1,4 +1,11 @@
-export type ViewId = "board" | "timeline" | "team" | "inbox"
+export type ViewId =
+  | "board"
+  | "timeline"
+  | "team"
+  | "inbox"
+  | "voices"
+  | "meetings"
+  | "scorecard"
 
 export type ColumnId = "todo" | "doing" | "review" | "done"
 
@@ -60,6 +67,9 @@ export const views: { id: ViewId; label: string }[] = [
   { id: "board", label: "Board" },
   { id: "timeline", label: "Timeline" },
   { id: "team", label: "Team" },
+  { id: "voices", label: "Voices" },
+  { id: "meetings", label: "Meetings" },
+  { id: "scorecard", label: "Scorecard" },
   { id: "inbox", label: "Inbox" },
 ]
 
@@ -76,7 +86,7 @@ export const people: Person[] = [
   {
     id: "p1",
     name: "Maya Chen",
-    role: "Product",
+    role: "Product lead",
     initials: "MC",
     color: "#FF6B1A",
     capacity: 32,
@@ -117,6 +127,51 @@ export const people: Person[] = [
     color: "#CA8A04",
     capacity: 28,
     allocated: 20,
+  },
+  {
+    id: "p6",
+    name: "Sam Ortiz",
+    role: "Product",
+    initials: "SO",
+    color: "#7C3AED",
+    capacity: 30,
+    allocated: 16,
+  },
+  {
+    id: "p7",
+    name: "Priya Nair",
+    role: "Engineering",
+    initials: "PN",
+    color: "#0891B2",
+    capacity: 34,
+    allocated: 24,
+  },
+  {
+    id: "p8",
+    name: "Kai Mendoza",
+    role: "Platform",
+    initials: "KM",
+    color: "#EA580C",
+    capacity: 32,
+    allocated: 26,
+  },
+  {
+    id: "p9",
+    name: "Riley Brooks",
+    role: "Design",
+    initials: "RB",
+    color: "#4F46E5",
+    capacity: 28,
+    allocated: 12,
+  },
+  {
+    id: "p10",
+    name: "Evan Cole",
+    role: "Solutions",
+    initials: "EC",
+    color: "#059669",
+    capacity: 30,
+    allocated: 10,
   },
 ]
 

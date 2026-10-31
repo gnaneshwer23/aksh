@@ -241,13 +241,24 @@ function TaskDetail({
 }
 
 function PersonDetail({ personId }: { personId: string }) {
-  const { tasks, select } = useWorkspace()
+  const {
+    tasks,
+    select,
+    personDashboard,
+    voiceEnrollments,
+    reviewProposal,
+  } = useWorkspace()
   const person = personById(personId)
   if (!person) {
     return <p className="text-sm text-muted-foreground">Person not found.</p>
   }
   const assigned = tasks.filter((t) => t.assigneeId === person.id)
   const pct = Math.round((person.allocated / person.capacity) * 100)
+  const dash = personDashboard(person.id)
+  const voice =
+    voiceEnrollments.find((v) => v.personId === person.id)?.status ??
+    "unenrolled"
+
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
       <div className="flex items-center gap-3">
@@ -262,8 +273,56 @@ function PersonDetail({ personId }: { personId: string }) {
           <p className="text-sm tabular-nums text-foreground">
             {person.allocated}h / {person.capacity}h · {pct}%
           </p>
+          <p className="mt-0.5 text-xs capitalize text-muted-foreground">
+            Voice {voice} · score {dash.score.total}
+          </p>
         </div>
       </div>
+
+      <DashboardSlice
+        title="Commitments from meetings"
+        empty="No meeting commitments routed here yet."
+        items={dash.commitments}
+        onConfirm={(id) => reviewProposal(id, "assignee_confirmed")}
+        onOpenTask={(taskId) => select({ kind: "task", id: taskId })}
+      />
+      <DashboardSlice
+        title="Updates they stated"
+        empty="No spoken updates captured."
+        items={dash.updates}
+      />
+      <DashboardSlice
+        title="Asks pointed at them"
+        empty="No open asks."
+        items={dash.asks}
+        onConfirm={(id) => reviewProposal(id, "assignee_confirmed")}
+      />
+
+      {dash.skills.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Skill tags
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {dash.skills.map((s) => (
+              <span
+                key={s.id}
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                  s.status === "proposed"
+                    ? "border-[var(--aksh-sun)]/40 bg-[var(--aksh-sun)]/15"
+                    : s.status === "dismissed"
+                      ? "border-border text-muted-foreground line-through"
+                      : "border-[var(--aksh-teal)]/30 bg-[var(--aksh-teal)]/10 text-[var(--aksh-teal-ink)]"
+                )}
+              >
+                {s.tag}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Assigned tasks
@@ -291,6 +350,73 @@ function PersonDetail({ personId }: { personId: string }) {
           )}
         </ul>
       </div>
+    </div>
+  )
+}
+
+function DashboardSlice({
+  title,
+  empty,
+  items,
+  onConfirm,
+  onOpenTask,
+}: {
+  title: string
+  empty: string
+  items: {
+    id: string
+    title: string
+    kind: string
+    status: string
+    taskId?: string
+  }[]
+  onConfirm?: (id: string) => void
+  onOpenTask?: (taskId: string) => void
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </p>
+      <ul className="space-y-2">
+        {items.length === 0 && (
+          <li className="text-sm text-muted-foreground">{empty}</li>
+        )}
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="rounded-2xl border border-border/70 bg-card px-3 py-2.5 text-sm"
+          >
+            <p className="font-medium">{item.title}</p>
+            <p className="mt-0.5 text-xs capitalize text-muted-foreground">
+              {item.kind} · {item.status.replace("_", " ")}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {item.status === "proposed" && onConfirm && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-full bg-[var(--aksh-teal)] text-white hover:bg-[var(--aksh-teal)]/90"
+                  onClick={() => onConfirm(item.id)}
+                >
+                  Confirm as assignee
+                </Button>
+              )}
+              {item.taskId && onOpenTask && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => onOpenTask(item.taskId!)}
+                >
+                  Open board task
+                </Button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

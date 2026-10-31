@@ -12,6 +12,9 @@ import { BoardView } from "@/components/views/board-view"
 import { TimelineView } from "@/components/views/timeline-view"
 import { TeamView } from "@/components/views/team-view"
 import { InboxView } from "@/components/views/inbox-view"
+import { VoicesView } from "@/components/views/voices-view"
+import { MeetingsView } from "@/components/views/meetings-view"
+import { ScorecardView } from "@/components/views/scorecard-view"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useWorkspace } from "@/components/workspace-context"
@@ -38,6 +41,7 @@ export function AppShell() {
     moveTask,
     promoteHighPriorityTodos,
     select,
+    pendingReviewCount,
   } = useWorkspace()
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -207,6 +211,12 @@ export function AppShell() {
                       {unread}
                     </span>
                   )}
+                  {(item.id === "meetings" || item.id === "voices") &&
+                    pendingReviewCount > 0 && (
+                      <span className="rounded-full bg-[var(--aksh-teal)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        {pendingReviewCount}
+                      </span>
+                    )}
                 </span>
               </Link>
             ))}
@@ -275,9 +285,9 @@ export function AppShell() {
                 <span className="text-foreground/80"> · </span>
                 {views.find((n) => n.id === view)?.label}
               </h1>
-              <p className="mt-2 max-w-[40ch] text-sm leading-6 text-[var(--aksh-ink-soft)] sm:text-[15px]">
-                Board, roadmap, team capacity, and inbox — a light sprint
-                surface with scripted copilot chrome.
+              <p className="mt-2 max-w-[48ch] text-sm leading-6 text-[var(--aksh-ink-soft)] sm:text-[15px]">
+                Voice-gated capture → agents propose commitments → personal
+                dashboards and a sealed scorecard for the product team.
               </p>
             </div>
             <ViewTabs />
@@ -322,6 +332,9 @@ export function AppShell() {
               )}
               {view === "timeline" && <TimelineView />}
               {view === "team" && <TeamView />}
+              {view === "voices" && <VoicesView />}
+              {view === "meetings" && <MeetingsView />}
+              {view === "scorecard" && <ScorecardView />}
               {view === "inbox" && <InboxView />}
             </motion.div>
           </AnimatePresence>

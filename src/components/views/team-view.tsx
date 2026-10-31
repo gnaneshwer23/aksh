@@ -16,9 +16,19 @@ const burndown = [
 ]
 
 export function TeamView() {
-  const { select, selection } = useWorkspace()
+  const {
+    select,
+    selection,
+    personDashboard,
+    voiceEnrollments,
+    proposals,
+  } = useWorkspace()
   const maxCap = Math.max(...people.map((m) => m.capacity), 1)
   const maxRemain = Math.max(...burndown.map((b) => b.remaining), 1)
+  const focusId =
+    selection?.kind === "person" ? selection.id : people[0]?.id
+  const focus = focusId ? personDashboard(focusId) : null
+  const focusPerson = people.find((p) => p.id === focusId)
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -28,7 +38,8 @@ export function TeamView() {
             Weekly workload
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Hours booked versus capacity for this sample week.
+            Hours booked versus capacity — open a person for meeting
+            commitments, updates, and asks.
           </p>
         </header>
         <ul className="space-y-4">
@@ -36,6 +47,13 @@ export function TeamView() {
             const pct = Math.round((m.allocated / m.capacity) * 100)
             const active =
               selection?.kind === "person" && selection.id === m.id
+            const voice =
+              voiceEnrollments.find((v) => v.personId === m.id)?.status ??
+              "unenrolled"
+            const dash = personDashboard(m.id)
+            const pending = dash.commitments.filter(
+              (c) => c.status === "proposed"
+            ).length
             return (
               <li key={m.id}>
                 <button
@@ -56,7 +74,10 @@ export function TeamView() {
                       </span>
                       <div>
                         <p className="text-sm font-medium">{m.name}</p>
-                        <p className="text-xs text-muted-foreground">{m.role}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {m.role} · voice {voice}
+                          {pending > 0 ? ` · ${pending} to confirm` : ""}
+                        </p>
                       </div>
                     </div>
                     <p className="text-xs tabular-nums text-muted-foreground">
@@ -84,6 +105,43 @@ export function TeamView() {
             )
           })}
         </ul>
+
+        {focus && focusPerson && (
+          <div className="mt-6 border-t border-border/60 pt-5">
+            <h3 className="font-heading text-base font-semibold tracking-tight">
+              {focusPerson.name.split(" ")[0]}&apos;s meeting slice
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Score {focus.score.total} from confirmed signals ·{" "}
+              {proposals.length} agent proposals in workspace
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <SliceCard
+                label="Commitments"
+                count={focus.commitments.length}
+                hint={
+                  focus.commitments.filter((c) => c.status === "proposed")
+                    .length
+                    ? "needs seal"
+                    : "routed"
+                }
+              />
+              <SliceCard
+                label="Updates"
+                count={focus.updates.length}
+                hint="stated"
+              />
+              <SliceCard
+                label="Asks"
+                count={focus.asks.length}
+                hint="pointed here"
+              />
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Open the side panel for confirm actions and board links.
+            </p>
+          </div>
+        )}
       </section>
 
       <div className="grid gap-6">
@@ -173,6 +231,28 @@ export function TeamView() {
           </div>
         </section>
       </div>
+    </div>
+  )
+}
+
+function SliceCard({
+  label,
+  count,
+  hint,
+}: {
+  label: string
+  count: number
+  hint: string
+}) {
+  return (
+    <div className="rounded-2xl bg-[var(--aksh-mist)]/70 px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 font-heading text-2xl font-bold tabular-nums">
+        {count}
+      </p>
+      <p className="text-[11px] text-muted-foreground">{hint}</p>
     </div>
   )
 }
