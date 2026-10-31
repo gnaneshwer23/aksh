@@ -1,6 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { Bell, Menu, Plus, Search, X } from "lucide-react"
 import { Brand } from "@/components/brand"
@@ -12,23 +14,34 @@ import { TeamView } from "@/components/views/team-view"
 import { InboxView } from "@/components/views/inbox-view"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useWorkspace } from "@/components/workspace-context"
 import {
   copilotSteps,
   inboxThreads,
-  initialTasks,
   projects,
   views,
-  type ColumnId,
-  type Task,
   type ViewId,
 } from "@/lib/data"
+import { viewFromPathname } from "@/lib/views"
 import { cn } from "@/lib/utils"
 
 export function AppShell() {
-  const [view, setView] = useState<ViewId>("board")
-  const [project, setProject] = useState<string>("All")
+  const pathname = usePathname()
+  const router = useRouter()
+  const view = viewFromPathname(pathname)
+  const {
+    tasks,
+    project,
+    setProject,
+    query,
+    setQuery,
+    moveTask,
+    promoteHighPriorityTodos,
+    select,
+  } = useWorkspace()
+
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [tasks, setTasks] = useState<Task[]>(initialTasks)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [copilotActive, setCopilotActive] = useState(false)
   const [copilotLine, setCopilotLine] = useState(0)
 
@@ -37,10 +50,12 @@ export function AppShell() {
     []
   )
 
-  function moveTask(taskId: string, column: ColumnId) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, column } : t))
-    )
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [pathname])
+
+  function goToView(id: ViewId) {
+    router.push(`/${id}`)
   }
 
   function runCopilot() {
@@ -50,14 +65,8 @@ export function AppShell() {
       window.setTimeout(() => setCopilotLine(i), i * 700)
     })
     window.setTimeout(() => {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.priority === "high" && t.column === "todo"
-            ? { ...t, column: "doing" }
-            : t
-        )
-      )
-      setView("board")
+      promoteHighPriorityTodos()
+      goToView("board")
       setCopilotActive(false)
     }, copilotSteps.length * 700 + 400)
   }
@@ -82,9 +91,9 @@ export function AppShell() {
             <Menu className="size-5" />
           </Button>
 
-          <a href="/" className="min-w-0">
+          <Link href="/board" className="min-w-0">
             <Brand size="lg" className="sm:gap-3" />
-          </a>
+          </Link>
           <span className="hidden truncate text-sm font-medium text-muted-foreground md:inline">
             playful work for small teams
           </span>
@@ -93,17 +102,40 @@ export function AppShell() {
             <div className="relative hidden md:block">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  if (view !== "board") goToView("board")
+                }}
+                onFocus={() => {
+                  if (view !== "board") goToView("board")
+                }}
                 placeholder="Search tasks…"
                 className="h-8 w-48 rounded-full border-border/60 bg-card/70 pl-8 text-sm lg:w-56"
+                aria-label="Search tasks"
               />
             </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
+              className="rounded-full md:hidden"
+              aria-label="Search tasks"
+              aria-expanded={mobileSearchOpen}
+              onClick={() => {
+                setMobileSearchOpen((v) => !v)
+                if (view !== "board") goToView("board")
+              }}
+            >
+              <Search className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               className="relative rounded-full"
               aria-label="Notifications"
-              onClick={() => setView("inbox")}
+              onClick={() => goToView("inbox")}
             >
               <Bell className="size-4" />
               {unread > 0 && (
@@ -112,24 +144,55 @@ export function AppShell() {
             </Button>
             <Button
               type="button"
+              size="icon"
+              className="rounded-full bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)] hover:bg-[var(--aksh-coral)]/90 sm:hidden"
+              aria-label="New task"
+              onClick={() => select({ kind: "new-task" })}
+            >
+              <Plus className="size-4" />
+            </Button>
+            <Button
+              type="button"
               size="sm"
               className="hidden rounded-full bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)] hover:bg-[var(--aksh-coral)]/90 sm:inline-flex"
+              onClick={() => select({ kind: "new-task" })}
             >
               <Plus className="size-3.5" />
               New task
             </Button>
           </div>
         </div>
+        <AnimatePresence>
+          {mobileSearchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-border/40 px-4 py-3 md:hidden"
+            >
+              <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search tasks…"
+                  className="h-9 rounded-full border-border/60 bg-card/70 pl-8 text-sm"
+                  aria-label="Search tasks"
+                  autoFocus
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       <div className="mx-auto flex w-full max-w-[1280px] flex-1 gap-0 px-0 sm:px-6 lg:gap-6 lg:py-6">
         <aside className="hidden w-56 shrink-0 flex-col gap-6 lg:flex">
           <nav className="flex flex-col gap-1 rounded-3xl border border-border/60 bg-card/70 p-2 backdrop-blur-sm">
             {views.map((item) => (
-              <button
+              <Link
                 key={item.id}
-                type="button"
-                onClick={() => setView(item.id)}
+                href={`/${item.id}`}
                 className={cn(
                   "rounded-2xl px-3 py-2.5 text-left text-sm font-medium transition-colors",
                   view === item.id
@@ -145,7 +208,7 @@ export function AppShell() {
                     </span>
                   )}
                 </span>
-              </button>
+              </Link>
             ))}
           </nav>
 
@@ -158,7 +221,10 @@ export function AppShell() {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setProject(p)}
+                  onClick={() => {
+                    setProject(p)
+                    if (view !== "board") goToView("board")
+                  }}
                   className={cn(
                     "rounded-xl px-2.5 py-2 text-left text-sm transition-colors",
                     project === p
@@ -214,7 +280,7 @@ export function AppShell() {
                 surface with scripted copilot chrome.
               </p>
             </div>
-            <ViewTabs value={view} onChange={setView} />
+            <ViewTabs />
           </div>
 
           <div className="mb-4 flex gap-2 overflow-x-auto lg:hidden">
@@ -222,7 +288,10 @@ export function AppShell() {
               <button
                 key={p}
                 type="button"
-                onClick={() => setProject(p)}
+                onClick={() => {
+                  setProject(p)
+                  if (view !== "board") goToView("board")
+                }}
                 className={cn(
                   "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                   project === p
@@ -247,6 +316,7 @@ export function AppShell() {
                 <BoardView
                   project={project}
                   tasks={tasks}
+                  query={query}
                   onMove={moveTask}
                 />
               )}
@@ -293,13 +363,10 @@ export function AppShell() {
               </div>
               <nav className="flex flex-col gap-1">
                 {views.map((item) => (
-                  <button
+                  <Link
                     key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setView(item.id)
-                      setMobileNavOpen(false)
-                    }}
+                    href={`/${item.id}`}
+                    onClick={() => setMobileNavOpen(false)}
                     className={cn(
                       "rounded-2xl px-3 py-2.5 text-left text-sm font-medium",
                       view === item.id
@@ -308,9 +375,20 @@ export function AppShell() {
                     )}
                   >
                     {item.label}
-                  </button>
+                  </Link>
                 ))}
               </nav>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => {
+                  setMobileNavOpen(false)
+                  select({ kind: "new-task" })
+                }}
+              >
+                New task
+              </Button>
               <Button
                 type="button"
                 className="mt-auto rounded-full bg-[var(--aksh-coral)] text-[var(--aksh-coral-ink)]"

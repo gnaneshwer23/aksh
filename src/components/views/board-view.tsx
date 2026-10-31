@@ -3,12 +3,13 @@
 import { motion } from "framer-motion"
 import {
   columns,
-  initialTasks,
   personById,
   type ColumnId,
   type Task,
 } from "@/lib/data"
+import { issueTypeLabel, issueTypeTone } from "@/lib/issue-templates"
 import { Badge } from "@/components/ui/badge"
+import { useWorkspace } from "@/components/workspace-context"
 import { cn } from "@/lib/utils"
 
 const priorityTone: Record<string, string> = {
@@ -19,14 +20,30 @@ const priorityTone: Record<string, string> = {
 
 export function BoardView({
   project,
-  tasks = initialTasks,
+  tasks,
+  query = "",
   onMove,
 }: {
   project: string
-  tasks?: Task[]
+  tasks: Task[]
+  query?: string
   onMove?: (taskId: string, column: ColumnId) => void
 }) {
-  const visible = tasks.filter((t) => project === "All" || t.project === project)
+  const { select, selection } = useWorkspace()
+  const q = query.trim().toLowerCase()
+  const visible = tasks.filter((t) => {
+    const projectOk = project === "All" || t.project === project
+    if (!projectOk) return false
+    if (!q) return true
+    return (
+      t.title.toLowerCase().includes(q) ||
+      t.tags.some((tag) => tag.toLowerCase().includes(q)) ||
+      t.project.toLowerCase().includes(q) ||
+      t.type.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q) ||
+      personById(t.assigneeId)?.name.toLowerCase().includes(q)
+    )
+  })
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
@@ -48,6 +65,8 @@ export function BoardView({
             <ul className="flex min-h-[120px] flex-col gap-2.5">
               {cards.map((task, i) => {
                 const person = personById(task.assigneeId)
+                const active =
+                  selection?.kind === "task" && selection.id === task.id
                 return (
                   <motion.li
                     key={task.id}
@@ -60,65 +79,92 @@ export function BoardView({
                       ease: [0.22, 1, 0.36, 1],
                     }}
                     whileHover={{ y: -2 }}
-                    className="group rounded-2xl border border-border/70 bg-card/90 p-3.5 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-sm"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-[14px] font-medium leading-snug tracking-tight text-foreground">
-                        {task.title}
-                      </p>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                          priorityTone[task.priority]
-                        )}
-                      >
-                        {task.priority}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {task.tags.map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="secondary"
-                          className="rounded-full bg-[var(--aksh-mist)] text-[11px] font-medium text-[var(--aksh-ink-soft)]"
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => select({ kind: "task", id: task.id })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          select({ kind: "task", id: task.id })
+                        }
+                      }}
+                      className={cn(
+                        "group w-full cursor-pointer rounded-2xl border border-border/70 bg-card/90 p-3.5 text-left shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-sm transition-colors",
+                        active
+                          ? "border-[var(--aksh-coral)]/50 bg-[var(--aksh-mist)]"
+                          : "hover:border-border"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[14px] font-medium leading-snug tracking-tight text-foreground">
+                          {task.title}
+                        </p>
                         <span
-                          className="flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                          style={{ backgroundColor: person?.color }}
+                          className={cn(
+                            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                            priorityTone[task.priority]
+                          )}
                         >
-                          {person?.initials}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {person?.name.split(" ")[0]}
+                          {task.priority}
                         </span>
                       </div>
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {task.points} pts
-                      </span>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                            issueTypeTone(task.type)
+                          )}
+                          title={issueTypeLabel(task.type)}
+                        >
+                          {issueTypeLabel(task.type)}
+                        </span>
+                        {task.tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="rounded-full bg-[var(--aksh-mist)] text-[11px] font-medium text-[var(--aksh-ink-soft)]"
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                            style={{ backgroundColor: person?.color }}
+                          >
+                            {person?.initials}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {person?.name.split(" ")[0]}
+                          </span>
+                        </div>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {task.points} pts
+                        </span>
+                      </div>
+                      {onMove && col.id !== "done" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onMove(task.id, nextColumn(col.id))
+                          }}
+                          className="mt-3 w-full rounded-xl bg-muted/80 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-[var(--aksh-mist)] hover:text-foreground"
+                        >
+                          Move forward →
+                        </button>
+                      )}
                     </div>
-                    {onMove && col.id !== "done" && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onMove(task.id, nextColumn(col.id))
-                        }
-                        className="mt-3 w-full rounded-xl bg-muted/80 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-[var(--aksh-mist)] hover:text-foreground"
-                      >
-                        Move forward →
-                      </button>
-                    )}
                   </motion.li>
                 )
               })}
               {cards.length === 0 && (
                 <li className="rounded-2xl border border-dashed border-border/80 px-3 py-8 text-center text-sm text-muted-foreground">
-                  Nothing in {col.label}
+                  {q ? `No matches in ${col.label}` : `Nothing in ${col.label}`}
                 </li>
               )}
             </ul>

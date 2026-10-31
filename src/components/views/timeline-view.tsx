@@ -4,11 +4,13 @@ import { useState } from "react"
 import { motion } from "framer-motion"
 import { personById, timelineItems } from "@/lib/data"
 import { Button } from "@/components/ui/button"
+import { useWorkspace } from "@/components/workspace-context"
 import { cn } from "@/lib/utils"
 
 const TOTAL_DAYS = 18
 
 export function TimelineView() {
+  const { select, selection } = useWorkspace()
   const [showDeps, setShowDeps] = useState(true)
   const [tilt, setTilt] = useState(false)
 
@@ -67,51 +69,59 @@ export function TimelineView() {
             const dep = showDeps
               ? timelineItems.find((t) => t.id === item.dependsOn)
               : undefined
+            const active =
+              selection?.kind === "timeline" && selection.id === item.id
 
             return (
-              <li
-                key={item.id}
-                className="grid grid-cols-[minmax(100px,160px)_1fr] items-center gap-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium tracking-tight">
-                    {item.title}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {owner?.name}
-                  </p>
-                </div>
-                <div className="relative h-10 rounded-xl bg-[var(--aksh-mist)]/50">
-                  {dep && (
-                    <div
-                      className="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 border-t border-dashed border-[var(--aksh-coral)]/50"
-                      style={{
-                        left: `${(dep.end / TOTAL_DAYS) * 100}%`,
-                        width: `${left - (dep.end / TOTAL_DAYS) * 100}%`,
-                      }}
-                    />
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => select({ kind: "timeline", id: item.id })}
+                  className={cn(
+                    "grid w-full grid-cols-[minmax(100px,160px)_1fr] items-center gap-3 rounded-2xl px-1 py-1 text-left transition-colors",
+                    active ? "bg-[var(--aksh-mist)]" : "hover:bg-muted/50"
                   )}
-                  <motion.div
-                    initial={{ scaleX: 0, opacity: 0 }}
-                    animate={{ scaleX: 1, opacity: 1 }}
-                    transition={{
-                      delay: 0.06 + i * 0.05,
-                      duration: 0.45,
-                      ease: [0.22, 1, 0.36, 1],
-                    }}
-                    className="absolute top-1.5 bottom-1.5 rounded-lg px-2.5 shadow-sm"
-                    style={{
-                      left: `${left}%`,
-                      width: `${Math.max(width, 4)}%`,
-                      backgroundColor: item.color,
-                      transformOrigin: "left center",
-                    }}
-                  >
-                    <span className="flex h-full items-center truncate text-[11px] font-semibold text-white">
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium tracking-tight">
                       {item.title}
-                    </span>
-                  </motion.div>
-                </div>
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {owner?.name}
+                    </p>
+                  </div>
+                  <div className="relative h-10 rounded-xl bg-[var(--aksh-mist)]/50">
+                    {dep && (
+                      <div
+                        className="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 border-t border-dashed border-[var(--aksh-coral)]/50"
+                        style={{
+                          left: `${(dep.end / TOTAL_DAYS) * 100}%`,
+                          width: `${left - (dep.end / TOTAL_DAYS) * 100}%`,
+                        }}
+                      />
+                    )}
+                    <motion.div
+                      initial={{ scaleX: 0, opacity: 0 }}
+                      animate={{ scaleX: 1, opacity: 1 }}
+                      transition={{
+                        delay: 0.06 + i * 0.05,
+                        duration: 0.45,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
+                      className="absolute top-1.5 bottom-1.5 rounded-lg px-2.5 shadow-sm"
+                      style={{
+                        left: `${left}%`,
+                        width: `${Math.max(width, 4)}%`,
+                        backgroundColor: item.color,
+                        transformOrigin: "left center",
+                      }}
+                    >
+                      <span className="flex h-full items-center truncate text-[11px] font-semibold text-white">
+                        {item.title}
+                      </span>
+                    </motion.div>
+                  </div>
+                </button>
               </li>
             )
           })}

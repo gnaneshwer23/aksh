@@ -4,6 +4,9 @@ export type ColumnId = "todo" | "doing" | "review" | "done"
 
 export type Priority = "low" | "medium" | "high"
 
+/** Work item kind — story / bug / task (Jira-style). Defaults to task when omitted. */
+export type IssueType = "story" | "bug" | "task"
+
 export type Person = {
   id: string
   name: string
@@ -23,6 +26,10 @@ export type Task = {
   points: number
   assigneeId: string
   tags: string[]
+  /** Issue type; treat missing as `"task"` for older mock rows. */
+  type: IssueType
+  /** Markdown / structured text body (template-filled on create). */
+  description: string
 }
 
 export type TimelineItem = {
@@ -123,6 +130,23 @@ export const initialTasks: Task[] = [
     points: 3,
     assigneeId: "p2",
     tags: ["design"],
+    type: "story",
+    description: `## User story
+
+**As a** new teammate
+**I want** a calm empty board that explains the next step
+**So that** I know how to create my first task without hunting
+
+## Acceptance criteria
+
+- [ ] Empty state shows brand mark + one CTA
+- [ ] Illustration matches soft blob style
+- [ ] Copy under 2 lines on mobile
+
+## Notes
+
+- Pair with Jonas on Figma options
+`,
   },
   {
     id: "t2",
@@ -133,6 +157,23 @@ export const initialTasks: Task[] = [
     points: 5,
     assigneeId: "p3",
     tags: ["frontend"],
+    type: "story",
+    description: `## User story
+
+**As a** sprint lead
+**I want** capacity bars tied to assigned points
+**So that** I can see overload before stand-up
+
+## Acceptance criteria
+
+- [ ] Gauge reflects allocated / capacity per person
+- [ ] Over 95% uses coral accent
+- [ ] Updates when tasks move columns
+
+## Notes
+
+- Reuse Team view data shape
+`,
   },
   {
     id: "t3",
@@ -143,6 +184,22 @@ export const initialTasks: Task[] = [
     points: 2,
     assigneeId: "p1",
     tags: ["docs"],
+    type: "task",
+    description: `## Description
+
+Outline release notes for Pulse Mobile beta: highlights, fixes, known issues.
+
+## Checklist
+
+- [ ] Collect shipped stories from board
+- [ ] Draft highlights section
+- [ ] List known issues from QA
+
+## Definition of done
+
+- [ ] Reviewed by Maya
+- [ ] Linked in Inbox thread
+`,
   },
   {
     id: "t4",
@@ -153,6 +210,22 @@ export const initialTasks: Task[] = [
     points: 5,
     assigneeId: "p3",
     tags: ["motion"],
+    type: "task",
+    description: `## Description
+
+Spring the active tab indicator under Board / Timeline / Team / Inbox.
+
+## Checklist
+
+- [ ] Match coral brand motion curve
+- [ ] Respect reduced-motion
+- [ ] No layout shift on route change
+
+## Definition of done
+
+- [ ] Reviewed on desktop + mobile
+- [ ] Linked artifacts updated
+`,
   },
   {
     id: "t5",
@@ -163,6 +236,22 @@ export const initialTasks: Task[] = [
     points: 2,
     assigneeId: "p2",
     tags: ["design"],
+    type: "task",
+    description: `## Description
+
+Tighten avatar overlap on cards so stacks read clearly at 5 people.
+
+## Checklist
+
+- [ ] 2px overlap adjustment
+- [ ] Focus ring still visible
+- [ ] Snapshot for design QA
+
+## Definition of done
+
+- [ ] Reviewed / verified
+- [ ] Linked artifacts updated
+`,
   },
   {
     id: "t6",
@@ -173,6 +262,22 @@ export const initialTasks: Task[] = [
     points: 3,
     assigneeId: "p4",
     tags: ["frontend"],
+    type: "task",
+    description: `## Description
+
+Project + search filters already live in WorkspaceProvider — verify edge cases and empty states.
+
+## Checklist
+
+- [ ] All / project filter
+- [ ] Substring on title, tags, assignee
+- [ ] Empty column copy when filtered
+
+## Definition of done
+
+- [ ] Reviewed / verified
+- [ ] Linked artifacts updated
+`,
   },
   {
     id: "t7",
@@ -183,6 +288,35 @@ export const initialTasks: Task[] = [
     points: 3,
     assigneeId: "p5",
     tags: ["qa"],
+    type: "bug",
+    description: `## Summary
+
+Draft reply sometimes keeps stale subject after switching threads.
+
+## Environment
+
+- App / build: local demo
+- Browser / OS: Safari 18 / macOS
+- Account / role: QA
+
+## Steps to reproduce
+
+1. Open Inbox, select unread Maya thread
+2. Reveal draft, edit text
+3. Switch to Jonas thread without sending
+
+## Expected
+
+- Draft field shows Jonas draft copy
+
+## Actual
+
+- Previous Maya draft text remains until blur
+
+## Severity
+
+- [ ] Blocker  ·  [x] Major  ·  [ ] Minor  ·  [ ] Trivial
+`,
   },
   {
     id: "t8",
@@ -193,6 +327,22 @@ export const initialTasks: Task[] = [
     points: 2,
     assigneeId: "p2",
     tags: ["brand"],
+    type: "task",
+    description: `## Description
+
+Final SVG mark in shell header and empty states.
+
+## Checklist
+
+- [x] Export mark
+- [x] Wire Brand component
+- [x] Check contrast on mist background
+
+## Definition of done
+
+- [x] Reviewed / verified
+- [x] Linked artifacts updated
+`,
   },
   {
     id: "t9",
@@ -203,6 +353,22 @@ export const initialTasks: Task[] = [
     points: 1,
     assigneeId: "p4",
     tags: ["data"],
+    type: "task",
+    description: `## Description
+
+Populate people[], capacity, and initial board cards for the demo.
+
+## Checklist
+
+- [x] Five teammates
+- [x] Nine tasks across columns
+- [x] Inbox threads with drafts
+
+## Definition of done
+
+- [x] Reviewed / verified
+- [x] Linked artifacts updated
+`,
   },
 ]
 

@@ -1,16 +1,22 @@
 "use client"
 
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
 import { views, type ViewId } from "@/lib/data"
+import { viewFromPathname } from "@/lib/views"
 import { cn } from "@/lib/utils"
 
 export function ViewTabs({
   value,
   onChange,
 }: {
-  value: ViewId
-  onChange: (id: ViewId) => void
+  value?: ViewId
+  onChange?: (id: ViewId) => void
 }) {
+  const pathname = usePathname()
+  const activeId = value ?? viewFromPathname(pathname)
+
   return (
     <div
       role="tablist"
@@ -18,17 +24,19 @@ export function ViewTabs({
       className="no-scrollbar flex gap-1 overflow-x-auto rounded-full bg-secondary/80 p-1"
     >
       {views.map((view) => {
-        const active = view.id === value
+        const active = view.id === activeId
         return (
-          <button
+          <Link
             key={view.id}
-            type="button"
+            href={`/${view.id}`}
             role="tab"
             aria-selected={active}
-            onClick={() => onChange(view.id)}
+            onClick={() => onChange?.(view.id)}
             className={cn(
-              "relative h-9 min-w-max flex-1 rounded-full px-3.5 text-[13px] font-semibold transition-colors",
-              active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+              "relative h-9 min-w-max flex-1 rounded-full px-3.5 text-center text-[13px] font-semibold transition-colors",
+              active
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             {active && (
@@ -38,8 +46,10 @@ export function ViewTabs({
                 transition={{ type: "spring", stiffness: 420, damping: 32 }}
               />
             )}
-            <span className="relative">{view.label}</span>
-          </button>
+            <span className="relative inline-flex h-full items-center justify-center">
+              {view.label}
+            </span>
+          </Link>
         )
       })}
     </div>
